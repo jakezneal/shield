@@ -62,7 +62,7 @@ The Product Owner and Product Manager can each be `none`, `human` or `agent`, in
 Clone this repository, then run the installer against your project:
 
 ```bash
-git clone <shield repository URL> ~/Code/shield
+git clone https://github.com/jakezneal/shield ~/Code/shield
 ```
 
 ```bash
