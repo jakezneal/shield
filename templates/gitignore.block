@@ -1,0 +1,3 @@
+# shield:start (managed by shield's install.sh)
+.shield/
+# shield:end
