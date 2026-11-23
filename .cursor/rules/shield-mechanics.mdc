@@ -1,0 +1,26 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+
+# Shield in Cursor
+
+How to carry out `.agents/dispatcher.md` with Cursor's tools. Every shield skill uses this file in Cursor. Shield's agents are in `.cursor/agents/`; they take precedence over the Claude Code copies Cursor also finds in `.claude/agents/`.
+
+| The procedure says | In Cursor |
+|---|---|
+| Dispatch a role | Use the Task tool to launch the `shield-<role>` subagent (`shield-architect`, `shield-designer`, `shield-developer`, `shield-reviewer`, `shield-tester`, `shield-product-owner` or `shield-product-manager`), with the dispatch brief from `.agents/handoffs.md` as its prompt. Subagents start with a clean context. |
+| Use the model table | Name the role's **Cursor model** from `.agents/models.md` when you launch it. If Cursor can't use that model, the subagent runs on the agent file's model or yours. |
+| Wait for the report | Launch one role at a time, in the foreground, and wait for its report before launching the next. Never run roles in parallel or in the background. |
+| Ask the user | Use the ask-questions tool if you have it: one decision per question, recommended option first. Otherwise ask in chat and wait for the reply. Roles cannot ask the user themselves. |
+| Return answers to the same role | Resume the subagent with the agent ID its run returned. If that isn't possible, launch a fresh one; it will read the answers under `## Decisions` in `brief.md`. |
+| Dispatch a Reviewer, Tester or Product Owner for acceptance | Always a new launch. Never resume the Developer, or an earlier Reviewer, Tester or Product Owner, to make it the next one. |
+| Save a report | Write the role's final message to the run folder exactly as returned, with your file-editing tool. |
+| Read or update Jira | Use the Atlassian MCP server's tools if configured (Atlassian's plugin in the Cursor Marketplace, or `https://mcp.atlassian.com/v2/mcp` in MCP settings), otherwise `acli` in the terminal. |
+| Apply `.skills/tools.md` | Nothing to apply: shield doesn't restrict MCP tools per agent in Cursor. Name each role's allowed project tools in its brief. |
+| Show progress | If you have a to-do tool, list the phases and keep it up to date. |
+
+If a `shield-*` subagent isn't available, Cursor hasn't loaded shield's agents. Tell the user to check `.cursor/agents/` and reload the window. Never fall back to doing the role yourself.
+
+Record the model each subagent actually ran on if Cursor shows it; otherwise write `Unknown` beside the configured model.

@@ -12,6 +12,8 @@ Memory is for stable project knowledge, not notes about the current task. Task n
 | `commands.md` | Setup, build, test, lint and run commands that actually work | Before running any of those |
 | `decisions.md` | Durable decisions and the reasons behind them | Before proposing architectural changes |
 | `pitfalls.md` | Repeated mistakes, environment traps, sharp edges | Before debugging or touching fragile areas |
+| `product.md` | Users, goals, priorities, constraints, glossary | Before shaping, planning or designing a change |
+| `workflow.md` | Ticket source and product roles for shield | At the start of every shield command |
 
 ## Writing rules
 

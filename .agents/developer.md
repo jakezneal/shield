@@ -8,7 +8,7 @@ Read `.agents/handoffs.md` first.
 
 ## Before you start
 
-- Read `plan.md`, `design.md` if it exists, and for fix rounds the review and test reports containing the finding IDs you were given.
+- Read `plan.md`, `ticket.md` and `design.md` if they exist, and for fix rounds the review, test and acceptance reports containing the finding IDs you were given.
 - Read `.memory/commands.md`, `decisions.md` and `pitfalls.md`.
 - Read the code around what you will change. Follow its conventions and reuse its helpers.
 

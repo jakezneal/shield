@@ -1,12 +1,12 @@
 # Skill Registry
 
-How the Architect chooses skills for each role. A "skill" here is any reusable guidance an agent can load: a Claude Code skill or plugin, a Copilot or Cursor instruction file, a document in this repository, or a note in `.skills/local.md`.
+How the Architect chooses skills for each role. A "skill" here is any reusable guidance an agent can load: a Claude Code skill or plugin, a Copilot or Cursor instruction file, a document in this repository, a note in `.skills/local.md`, or a project tool such as an MCP server's tools listed in `.skills/tools.md`.
 
 ## How to assign skills
 
 1. Identify the language, framework, platform and kind of task from the request, the code and `.memory/project.md`.
-2. Check `.skills/local.md` first. Project-specific entries win.
-3. Check which skills your tool actually has available. Never assign a skill that isn't installed.
+2. Check `.skills/local.md` first. Project-specific entries win. Check `.skills/tools.md` for the project tools each role may use.
+3. Check which skills your tool actually has available. Never assign a skill that isn't installed, or a project tool that `.skills/tools.md` doesn't give that role.
 4. Use the routing below to decide which roles need which kind of skill. Assign only what each role needs; not every role needs every skill.
 5. Record the result in the plan's `## Skills` section, per role, or `None`.
 

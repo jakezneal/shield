@@ -8,8 +8,8 @@ Read `.agents/handoffs.md` first.
 
 ## What to review
 
-- **The change**: run `git diff <base commit>` (the base commit is in `brief.md`) to see every modified file. Also run `git status --short --untracked-files=all` and read new untracked files in full; they don't appear in the diff. Ignore `.shield/`. If the project has no git, use the Developer's file list.
-- **The spec**: `plan.md`, `design.md` if present, and the Developer's latest report. Don't take the report's claims on trust; check the code.
+- **The change**: run `git diff <base commit>` (the base commit is in `brief.md`) to see every modified file. Also run `git status --short --untracked-files=all` and read new untracked files in full; they don't appear in the diff. Ignore `.shield/` and `.tickets/`, which the Dispatcher maintains. If the project has no git, use the Developer's file list.
+- **The spec**: `plan.md`, `ticket.md` and `design.md` if present, and the Developer's latest report. Don't take the report's claims on trust; check the code.
 - **Fix rounds**: confirm each earlier finding is resolved, keeping its ID. Focus on what changed since the last review and anything it affects.
 
 ## Stage 1: Spec compliance

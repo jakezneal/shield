@@ -9,7 +9,9 @@
 #     of AGENTS.md, CLAUDE.md and .gitignore.
 #   - It never overwrites a file it didn't install, or one you've edited, unless
 #     you pass --force; originals are then backed up under .shield/backups/.
-#   - It never overwrites .memory/ or .skills/local.md.
+#   - It never overwrites .memory/, .skills/local.md, .skills/tools.md or .tickets/.
+#   - Claude Code agents get the extra tools listed in .skills/tools.md; the
+#     manifest records the merged file, so a table change isn't a local edit.
 #   - Running it twice in a row changes nothing the second time.
 
 set -eu
@@ -17,7 +19,8 @@ set -eu
 SRC_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 VERSION=$(cat "$SRC_DIR/VERSION" 2>/dev/null || printf 'unknown')
 MANIFEST=.agents/shield.manifest
-SEED_FILES='.skills/local.md .memory/project.md .memory/commands.md .memory/decisions.md .memory/pitfalls.md'
+SEED_FILES='.skills/local.md .skills/tools.md .memory/project.md .memory/commands.md .memory/decisions.md .memory/pitfalls.md .memory/product.md .memory/workflow.md'
+ALL_TOOLS='claude codex cursor'
 MD_START='<!-- shield:start'
 MD_END='<!-- shield:end'
 GI_START='# shield:start'
@@ -27,6 +30,7 @@ MODE=install
 TARGET=''
 DRY_RUN=0
 FORCE=0
+TOOLS=''
 STAMP=$(date +%Y%m%d-%H%M%S)
 CHANGES=0
 KEPT_EDITS=0
@@ -42,10 +46,14 @@ Usage:
 Modes (default: install):
   --update      Update an existing installation. Files you've edited are kept,
                 and the new version is written beside them as <file>.shield-new.
+                Also applies .skills/tools.md to the Claude Code agents.
   --uninstall   Remove shield's files and marked sections. Keeps .memory/,
-                .skills/local.md and .shield/ (run history).
+                .skills/local.md, .skills/tools.md and .shield/ (run history).
 
 Options:
+  --tools <list> Which tools to install adapters for, comma-separated, from
+                claude, codex and cursor. Default: all three on install, and
+                the tools chosen last time on update.
   --dry-run     Show what would change, without changing anything.
   --force       Replace files that clash with shield's, or that you've edited.
                 Originals are backed up under .shield/backups/<timestamp>/.
@@ -68,6 +76,8 @@ while [ $# -gt 0 ]; do
     --project) [ $# -ge 2 ] || die "--project needs a path"; TARGET=$2; shift 2 ;;
     --project=*) TARGET=${1#--project=}; shift ;;
     --here) TARGET=$(pwd); shift ;;
+    --tools) [ $# -ge 2 ] || die "--tools needs a list, such as claude,cursor"; TOOLS=$2; shift 2 ;;
+    --tools=*) TOOLS=${1#--tools=}; shift ;;
     --update) set_mode update; shift ;;
     --uninstall) set_mode uninstall; shift ;;
     --dry-run) DRY_RUN=1; shift ;;
@@ -79,6 +89,21 @@ while [ $# -gt 0 ]; do
 done
 
 [ -n "$TARGET" ] || { usage >&2; die "choose a target with --project <path> or --here"; }
+
+normalise_tools() { # <comma or space separated list>: prints known tools in a fixed order
+  list=$(printf '%s' "$1" | tr ',' ' ')
+  [ -n "$(printf '%s' "$list" | tr -d ' ')" ] || die "--tools needs at least one of: claude, codex, cursor"
+  for t in $list; do
+    case $t in claude|codex|cursor) ;; *) die "unknown tool in --tools: $t (choose from claude, codex, cursor)" ;; esac
+  done
+  out=''
+  for t in $ALL_TOOLS; do
+    case " $list " in *" $t "*) out="$out $t" ;; esac
+  done
+  printf '%s' "${out# }"
+}
+if [ -n "$TOOLS" ]; then TOOLS=$(normalise_tools "$TOOLS"); fi
+has_tool() { case " $TOOLS " in *" $1 "*) return 0 ;; esac; return 1; }
 [ -d "$TARGET" ] || die "target is not a directory: $TARGET"
 TARGET=$(CDPATH='' cd -- "$TARGET" && pwd)
 [ "$TARGET" != "$SRC_DIR" ] || die "refusing to install shield into its own source folder"
@@ -93,6 +118,7 @@ else
 fi
 
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/shield.XXXXXX")
+STAGE=$TMP/stage
 trap 'rm -rf "$TMP"' EXIT
 trap 'exit 130' INT TERM
 
@@ -104,10 +130,10 @@ notice() { printf '  %-9s %s\n' "$1" "$2"; }
 # ---------------------------------------------------------------- file actions
 # Every change goes through these, so --dry-run is honoured everywhere.
 
-copy_in() { # <source path> [destination path], both relative
+copy_in() { # <source path> [destination path], both relative; copies the staged version
   if [ "$DRY_RUN" = 1 ]; then return 0; fi
   mkdir -p "$(dirname "$TARGET/${2:-$1}")"
-  cp "$SRC_DIR/$1" "$TARGET/${2:-$1}"
+  cp "$STAGE/$1" "$TARGET/${2:-$1}"
 }
 
 backup() { # <path>
@@ -140,11 +166,24 @@ write_over() { # <temp file> <path>: keeps the target's permissions
 list_managed() {
   (
     cd "$SRC_DIR"
-    find .agents -type f -name '*.md'
+    find .agents -type f -name '*.md' ! -path '.agents/skills/*'
     printf '%s\n' .skills/principles.md .skills/registry.md .memory/README.md
-    find .claude/agents -type f -name 'shield-*.md'
-    find .claude/skills -type f -path '.claude/skills/shield*' ! -name '.DS_Store'
-  ) | sed 's|^\./||' | LC_ALL=C sort
+    if has_tool claude; then
+      find .claude/agents -type f -name 'shield-*.md'
+      find .claude/skills -type f -path '.claude/skills/shield*' ! -name '.DS_Store'
+    fi
+    if has_tool codex; then
+      find .codex/agents -type f -name 'shield-*.toml'
+      printf '%s\n' .codex/shield-mechanics.md
+    fi
+    if has_tool cursor; then
+      find .cursor/agents -type f -name 'shield-*.md'
+      printf '%s\n' .cursor/rules/shield-mechanics.mdc
+    fi
+    if has_tool codex || has_tool cursor; then
+      find .agents/skills -type f -path '.agents/skills/shield*' ! -name '.DS_Store'
+    fi
+  ) | sed 's|^\./||' | LC_ALL=C sort -u
 }
 
 recorded_hash() { # <path>: hash recorded at the last install or update
@@ -157,9 +196,15 @@ installed_version() {
   sed -n '1s/^# shield //p' "$TARGET/$MANIFEST"
 }
 
+installed_tools() { # tools recorded at the last install or update; all of them for manifests that predate --tools
+  t=$(sed -n 's/^# tools: //p' "$TARGET/$MANIFEST" | head -n 1)
+  printf '%s' "${t:-$ALL_TOOLS}"
+}
+
 write_manifest() {
   {
     printf '# shield %s\n' "$VERSION"
+    printf '# tools: %s\n' "$TOOLS"
     printf '# Checksums of the shield files installed here, used by install.sh --update and --uninstall. Do not edit.\n'
     cat "$TMP/new_manifest"
   } > "$TMP/manifest_out"
@@ -173,12 +218,67 @@ write_manifest() {
   report written "$MANIFEST"
 }
 
+# ---------------------------------------------------------------- staging
+# Every file is installed from $STAGE: shield's own copy, except that Claude Code
+# agents get the project's extra tools from .skills/tools.md.
+
+role_tools() ( # <role>: the role's valid extra tools from .skills/tools.md, comma-separated
+  [ -f "$TARGET/.skills/tools.md" ] || exit 0
+  cell=$(awk -F '|' -v r="$1" '/^ *[|]/ { n = $2; gsub(/^ +| +$/, "", n); n = tolower(n); gsub(/ +/, "-", n); if (n == r) { print $3; exit } }' "$TARGET/.skills/tools.md")
+  set -f
+  IFS=,
+  out=''
+  for t in $cell; do
+    t=$(printf '%s' "$t" | tr -d ' `')
+    case $t in
+      ''|-) continue ;;
+      *[!A-Za-z0-9_.*-]*) warn ".skills/tools.md: skipped '$t' for $1 (not a tool name)"; continue ;;
+      mcp__?*__\*) ;;
+      *\**) warn ".skills/tools.md: skipped '$t' for $1 (use mcp__<server>__* for a whole server)"; continue ;;
+      Agent) warn ".skills/tools.md: skipped Agent for $1 (roles never dispatch agents)"; continue ;;
+      Edit|Write|NotebookEdit)
+        if [ "$1" != developer ]; then warn ".skills/tools.md: skipped $t for $1 (only the Developer edits files)"; continue; fi ;;
+    esac
+    out="${out:+$out, }$t"
+  done
+  printf '%s' "$out"
+)
+
+render_agent() { # <managed path> <output file>: adds the role's extra tools to its tools: line
+  role=${1#.claude/agents/shield-}
+  role=${role%.md}
+  extra=$(role_tools "$role")
+  awk -v extra="$extra" '
+    NR == 1 && $0 == "---" { fm = 1; print; next }
+    fm && $0 == "---" { fm = 0; print; next }
+    fm && extra != "" && index($0, "tools: ") == 1 {
+      line = $0
+      n = split(substr($0, 8), have, /, */)
+      for (i = 1; i <= n; i++) seen[have[i]] = 1
+      m = split(extra, add, /, /)
+      for (i = 1; i <= m; i++) if (!(add[i] in seen)) { line = line ", " add[i]; seen[add[i]] = 1 }
+      print line
+      next
+    }
+    { print }' "$SRC_DIR/$1" > "$2"
+}
+
+stage_files() {
+  { cat "$TMP/managed"; printf '%s\n' $SEED_FILES; } | while IFS= read -r f; do
+    mkdir -p "$(dirname "$STAGE/$f")"
+    case $f in
+      .claude/agents/shield-*.md) render_agent "$f" "$STAGE/$f" ;;
+      *) cp "$SRC_DIR/$f" "$STAGE/$f" ;;
+    esac
+  done
+}
+
 # ---------------------------------------------------------------- managed files
 
 install_managed() {
   conflicts=''
   while IFS= read -r f; do
-    if [ -e "$TARGET/$f" ] && ! cmp -s "$SRC_DIR/$f" "$TARGET/$f"; then
+    if [ -e "$TARGET/$f" ] && ! cmp -s "$STAGE/$f" "$TARGET/$f"; then
       conflicts="$conflicts  $f
 "
     fi
@@ -192,18 +292,18 @@ install_managed() {
     if [ ! -e "$TARGET/$f" ]; then
       copy_in "$f"
       report added "$f"
-    elif ! cmp -s "$SRC_DIR/$f" "$TARGET/$f"; then
+    elif ! cmp -s "$STAGE/$f" "$TARGET/$f"; then
       backup "$f"
       copy_in "$f"
       report replaced "$f (original saved in .shield/backups/$STAMP/)"
     fi
-    printf '%s  %s\n' "$(hash_file "$SRC_DIR/$f")" "$f" >> "$TMP/new_manifest"
+    printf '%s  %s\n' "$(hash_file "$STAGE/$f")" "$f" >> "$TMP/new_manifest"
   done < "$TMP/managed"
 }
 
 update_managed() {
   while IFS= read -r f; do
-    src_h=$(hash_file "$SRC_DIR/$f")
+    src_h=$(hash_file "$STAGE/$f")
     old_h=$(recorded_hash "$f")
     if [ ! -e "$TARGET/$f" ]; then
       copy_in "$f"
@@ -237,9 +337,9 @@ update_managed() {
     if [ ! -e "$TARGET/$f" ]; then continue; fi
     if [ "$(hash_file "$TARGET/$f")" = "$(recorded_hash "$f")" ]; then
       remove_file "$f"
-      report removed "$f (no longer part of shield)"
+      report removed "$f (no longer part of shield for these tools)"
     else
-      notice kept "$f (you edited it; no longer part of shield, so delete it when ready)"
+      notice kept "$f (you edited it; no longer part of shield for these tools, so delete it when ready)"
     fi
   done < "$TMP/old_paths"
 }
@@ -353,7 +453,11 @@ ensure_claude_import() {
 
 ensure_blocks() {
   ensure_block AGENTS.md AGENTS.block.md "$MD_START" "$MD_END"
-  ensure_claude_import
+  if has_tool claude; then
+    ensure_claude_import
+  else
+    remove_block_from CLAUDE.md "$MD_START" "$MD_END"
+  fi
   ensure_block .gitignore gitignore.block "$GI_START" "$GI_END"
 }
 
@@ -374,7 +478,6 @@ remove_block_from() { # <file> <start> <end>
 # ---------------------------------------------------------------- main
 
 : > "$TMP/new_manifest"
-list_managed > "$TMP/managed"
 
 if [ "$DRY_RUN" = 1 ]; then say "Dry run: nothing will be changed."; fi
 
@@ -383,7 +486,10 @@ case $MODE in
     if [ -f "$TARGET/$MANIFEST" ]; then
       die "shield $(installed_version) is already installed in $TARGET. Use --update to update it."
     fi
-    say "Installing shield $VERSION into $TARGET"
+    TOOLS=${TOOLS:-$ALL_TOOLS}
+    list_managed > "$TMP/managed"
+    say "Installing shield $VERSION into $TARGET for: $TOOLS"
+    stage_files
     if command -v git >/dev/null 2>&1 && ! git -C "$TARGET" rev-parse --git-dir >/dev/null 2>&1; then
       notice note "this isn't a git repository; shield's branch and review steps work best with git"
     fi
@@ -395,7 +501,10 @@ case $MODE in
   update)
     [ -f "$TARGET/$MANIFEST" ] || die "shield isn't installed in $TARGET. Run without --update to install it."
     cp "$TARGET/$MANIFEST" "$TMP/old_manifest"
-    say "Updating shield $(installed_version) to $VERSION in $TARGET"
+    TOOLS=${TOOLS:-$(installed_tools)}
+    list_managed > "$TMP/managed"
+    say "Updating shield $(installed_version) to $VERSION in $TARGET for: $TOOLS"
+    stage_files
     update_managed
     seed_files
     ensure_blocks
@@ -434,9 +543,13 @@ case $MODE in
     say ""
     say "Next steps:"
     say "  1. Review the new files (git status) and commit them."
-    say "  2. Start a new Claude Code session so it loads the shield agents and skills."
-    say "  3. In an existing project, run /shield-init to fill in .memory/."
-    say "  4. Try /shield <request>."
+    say "  2. Start a new session in your tool so it loads the shield agents and skills."
+    if has_tool codex; then
+      say "     In Codex, trust the project so it loads .codex/agents/."
+    fi
+    say "  3. Run /shield-init (\$shield-init in Codex) to choose tickets and product"
+    say "     roles, and to fill in .memory/."
+    say "  4. Try /shield <request> (\$shield <request> in Codex)."
     ;;
   update)
     say "Updated shield to $VERSION."
@@ -445,9 +558,9 @@ case $MODE in
       say "Some files you've edited were kept. Merge each <file>.shield-new into"
       say "its file, then delete the .shield-new copy."
     fi
-    say "Start a new Claude Code session to pick up the changes."
+    say "Start a new session in your tool to pick up the changes."
     ;;
   uninstall)
-    say "Removed shield. Kept .memory/, .skills/local.md and any .shield/ run history."
+    say "Removed shield. Kept .memory/, .skills/local.md, .skills/tools.md and any .shield/ run history."
     ;;
 esac

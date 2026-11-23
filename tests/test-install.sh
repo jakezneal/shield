@@ -44,15 +44,45 @@ manifest_matches() { # every file in the manifest exists and matches its checksu
   done
 }
 
-INSTALLED='.agents/README.md .agents/dispatcher.md .agents/handoffs.md .agents/architect.md
-.agents/designer.md .agents/developer.md .agents/reviewer.md .agents/tester.md .agents/shield.manifest
-.skills/principles.md .skills/registry.md .skills/local.md
-.memory/README.md .memory/project.md .memory/commands.md .memory/decisions.md .memory/pitfalls.md
-.claude/agents/shield-architect.md .claude/agents/shield-designer.md .claude/agents/shield-developer.md
-.claude/agents/shield-reviewer.md .claude/agents/shield-tester.md
-.claude/skills/shield/SKILL.md .claude/skills/shield/mechanics.md .claude/skills/shield-plan/SKILL.md
-.claude/skills/shield-review/SKILL.md .claude/skills/shield-init/SKILL.md
-AGENTS.md CLAUDE.md .gitignore'
+ROLES='architect designer developer reviewer tester product-owner product-manager'
+SKILLS='shield shield-plan shield-review shield-ticket shield-init'
+CORE='.agents/README.md .agents/dispatcher.md .agents/handoffs.md .agents/tickets.md .agents/models.md
+.agents/templates/ticket.md .agents/templates/queue.md .agents/shield.manifest
+.skills/principles.md .skills/registry.md .skills/local.md .skills/tools.md
+.memory/README.md .memory/project.md .memory/product.md .memory/workflow.md .memory/commands.md
+.memory/decisions.md .memory/pitfalls.md AGENTS.md .gitignore'
+CLAUDE_FILES='CLAUDE.md .claude/skills/shield/mechanics.md'
+CODEX_FILES='.codex/shield-mechanics.md'
+CURSOR_FILES='.cursor/rules/shield-mechanics.mdc'
+for r in $ROLES; do
+  CORE="$CORE .agents/$r.md"
+  CLAUDE_FILES="$CLAUDE_FILES .claude/agents/shield-$r.md"
+  CODEX_FILES="$CODEX_FILES .codex/agents/shield-$r.toml"
+  CURSOR_FILES="$CURSOR_FILES .cursor/agents/shield-$r.md"
+done
+SHARED_SKILLS=''
+for s in $SKILLS; do
+  CLAUDE_FILES="$CLAUDE_FILES .claude/skills/$s/SKILL.md"
+  SHARED_SKILLS="$SHARED_SKILLS .agents/skills/$s/SKILL.md"
+done
+INSTALLED="$CORE $CLAUDE_FILES $CODEX_FILES $CURSOR_FILES $SHARED_SKILLS"
+
+frontmatter() { # <file> <key>: value of a top-level frontmatter key
+  awk -v k="$2" 'NR == 1 && $0 != "---" { exit } NR > 1 && $0 == "---" { exit } NR > 1 && index($0, k ": ") == 1 { print substr($0, length(k) + 3); exit }' "$1"
+}
+toml_value() { # <file> <key>: value of a top-level string key
+  awk -v k="$2" 'index($0, k " = \"") == 1 { v = substr($0, length(k) + 5); sub(/"$/, "", v); print v; exit }' "$1"
+}
+body_of() { # <file>: everything after the frontmatter, without the blank line that follows it
+  awk 'n >= 2 { if (!started && $0 == "") next; started = 1; print; next } $0 == "---" { n++ }' "$1"
+}
+toml_body() { # <file>: developer_instructions
+  awk '$0 == "developer_instructions = \"\"\"" { on = 1; next } on && $0 == "\"\"\"" { exit } on { print }' "$1"
+}
+model_cell() { # <role> <field 3-7>: value from .agents/models.md, from the Claude Code model (3) to the Cursor model (7)
+  awk -F '|' -v r="$1" -v c="$2" '{ n = $2; gsub(/^ +| +$/, "", n); n = tolower(n); gsub(/ /, "-", n) }
+    n == r { v = $(c); gsub(/[ `]/, "", v); print v; exit }' "$ROOT/.agents/models.md"
+}
 
 # ---------------------------------------------------------------------------
 section "Fresh install"
@@ -67,6 +97,10 @@ check "manifest checksums match the installed files" manifest_matches "$P"
 check "doesn't copy the installer" not test -e "$P/install.sh"
 check "doesn't copy templates or tests" not test -e "$P/templates"
 check "doesn't copy shield's own AGENTS.md" not grep -q 'Working on shield' "$P/AGENTS.md"
+
+check "installs every tool by default" grep -qx '# tools: claude codex cursor' "$P/.agents/shield.manifest"
+check "creates the workflow settings with tickets off" grep -qx -- '- Source: none' "$P/.memory/workflow.md"
+check "doesn't create .tickets/" not test -e "$P/.tickets"
 
 section "Repeat install and update"
 before=$(snapshot "$P")
@@ -191,6 +225,71 @@ check "uninstall succeeds" inst --project "$K" --uninstall
 check "keeps an edited file" test -f "$K/.agents/developer.md"
 check "removes unedited files" not test -e "$K/.agents/tester.md"
 
+section "Choosing tools"
+T=$(project tools)
+check "install for Claude Code only succeeds" inst --project "$T" --tools claude
+for f in $CLAUDE_FILES; do check "Claude Code only installs $f" test -f "$T/$f"; done
+check "Claude Code only installs no Codex files" not test -e "$T/.codex"
+check "Claude Code only installs no Cursor files" not test -e "$T/.cursor"
+check "Claude Code only installs no shared skills" not test -e "$T/.agents/skills"
+check "records the chosen tools" grep -qx '# tools: claude' "$T/.agents/shield.manifest"
+before=$(snapshot "$T")
+inst --project "$T" --update >/dev/null 2>&1
+check "update keeps the chosen tools" same_snapshot "$before" "$T"
+check "switching to Codex and Cursor succeeds" inst --project "$T" --update --tools cursor,codex
+for f in $CODEX_FILES $CURSOR_FILES $SHARED_SKILLS; do check "switching installs $f" test -f "$T/$f"; done
+check "switching removes Claude Code files" not test -e "$T/.claude"
+check "switching removes the CLAUDE.md shield created" not test -e "$T/CLAUDE.md"
+check "records tools in a fixed order" grep -qx '# tools: codex cursor' "$T/.agents/shield.manifest"
+before=$(snapshot "$T")
+inst --project "$T" --update >/dev/null 2>&1
+check "repeating the update changes nothing" same_snapshot "$before" "$T"
+check "switching to Cursor only succeeds" inst --project "$T" --update --tools cursor
+check "Cursor only removes Codex files" not test -e "$T/.codex"
+check "Cursor only keeps the shared skills" test -f "$T/.agents/skills/shield/SKILL.md"
+check "refuses an unknown tool" not inst --project "$T" --update --tools claude,vim
+check "refuses an empty tool list" not inst --project "$T" --update --tools ,
+O=$(project old-manifest)
+inst --project "$O" --tools claude >/dev/null 2>&1
+grep -v '^# tools: ' "$O/.agents/shield.manifest" > "$WORK/manifest-without-tools" && cp "$WORK/manifest-without-tools" "$O/.agents/shield.manifest"
+check "update from a manifest without tools succeeds" inst --project "$O" --update
+check "it then installs every tool" grep -qx '# tools: claude codex cursor' "$O/.agents/shield.manifest"
+
+section "Role tools"
+R=$(project role-tools)
+inst --project "$R" >/dev/null 2>&1
+check "seeds .skills/tools.md" cmp -s "$R/.skills/tools.md" "$ROOT/.skills/tools.md"
+sed -e 's/^| Developer | - |/| Developer | `mcp__storybook__*`, mcp__storybook__docs-list |/' \
+    -e 's/^| Reviewer | - |/| Reviewer | mcp__storybook__docs-list, Agent, Write, mcp__*, bad;name |/' \
+    -e 's/^| Product Owner | - |/| Product Owner | mcp__storybook__docs-show |/' \
+    "$R/.skills/tools.md" > "$WORK/tools.md" && cp "$WORK/tools.md" "$R/.skills/tools.md"
+codex_before=$(snapshot "$R/.codex")
+check "update with role tools succeeds" inst --project "$R" --update
+tools_of() { frontmatter "$R/.claude/agents/shield-$1.md" tools; }
+check "adds a whole server to the Developer" sh -c 'echo "$1" | grep -q ", mcp__storybook__\*, mcp__storybook__docs-list$"' _ "$(tools_of developer)"
+check "adds an exact tool to the Product Owner" test "$(tools_of product-owner)" = 'Read, Grep, Glob, Bash, WebFetch, WebSearch, Skill, mcp__storybook__docs-show'
+check "skips tools roles must not have" test "$(tools_of reviewer)" = 'Read, Grep, Glob, Bash, Skill, mcp__storybook__docs-list'
+check "leaves roles without extra tools alone" cmp -s "$R/.claude/agents/shield-tester.md" "$ROOT/.claude/agents/shield-tester.md"
+check "keeps the agent body unchanged" test "$(body_of "$R/.claude/agents/shield-developer.md")" = "$(body_of "$ROOT/.claude/agents/shield-developer.md")"
+check "leaves Codex agents alone" same_snapshot "$codex_before" "$R/.codex"
+check "never overwrites .skills/tools.md" cmp -s "$R/.skills/tools.md" "$WORK/tools.md"
+check "manifest records the merged agents" manifest_matches "$R"
+out=$(inst --project "$R" --update 2>&1)
+check "warns about skipped tools" sh -c 'printf "%s" "$1" | grep -q "skipped Agent for reviewer"' _ "$out"
+check "repeating the update reports nothing new" sh -c 'printf "%s" "$1" | grep -q "Already up to date"' _ "$out"
+printf '\nMy tweak.\n' >> "$R/.claude/agents/shield-developer.md"
+cp "$R/.claude/agents/shield-developer.md" "$WORK/developer-agent.edited"
+sed 's/^| Developer | .*/| Developer | mcp__storybook__docs-show |/' "$R/.skills/tools.md" > "$WORK/tools2.md" && cp "$WORK/tools2.md" "$R/.skills/tools.md"
+inst --project "$R" --update >/dev/null 2>&1
+check "keeps an agent you edited when the table changes" cmp -s "$R/.claude/agents/shield-developer.md" "$WORK/developer-agent.edited"
+check "puts the merged tools in its .shield-new" sh -c 'grep -q "^tools: .*, mcp__storybook__docs-show$" "$1"' _ "$R/.claude/agents/shield-developer.md.shield-new"
+sed 's/^| Product Owner | .*/| Product Owner | - |/' "$R/.skills/tools.md" > "$WORK/tools3.md" && cp "$WORK/tools3.md" "$R/.skills/tools.md"
+inst --project "$R" --update >/dev/null 2>&1
+check "removes tools taken out of the table" cmp -s "$R/.claude/agents/shield-product-owner.md" "$ROOT/.claude/agents/shield-product-owner.md"
+check "uninstall with role tools succeeds" inst --project "$R" --uninstall
+check "uninstall removes merged agents" not test -e "$R/.claude/agents/shield-reviewer.md"
+check "uninstall keeps .skills/tools.md" test -f "$R/.skills/tools.md"
+
 section "Marker and symlink edge cases"
 L=$(project symlink)
 printf '# Rules\n' > "$L/AGENTS.md"
@@ -216,20 +315,40 @@ check "refuses a missing target" not inst --project "$WORK/does-not-exist"
 check "refuses --update and --uninstall together" not inst --project "$P" --update --uninstall
 
 section "Structure"
-for role in architect designer developer reviewer tester; do
+for role in $ROLES; do
   a="$ROOT/.claude/agents/shield-$role.md"
+  x="$ROOT/.codex/agents/shield-$role.toml"
+  c="$ROOT/.cursor/agents/shield-$role.md"
   check "shield-$role starts with frontmatter" test "$(head -n 1 "$a")" = '---'
-  check "shield-$role name matches its file" grep -qx "name: shield-$role" "$a"
-  check "shield-$role has a description" grep -q '^description: ' "$a"
-  check "shield-$role sets a model" grep -Eq '^model: (opus|sonnet|haiku|fable|inherit)$' "$a"
+  check "shield-$role name matches its file" test "$(frontmatter "$a" name)" = "shield-$role"
+  check "shield-$role has a description" test -n "$(frontmatter "$a" description)"
+  check "shield-$role sets a Claude Code model alias" sh -c 'echo "$1" | grep -Eqx "opus|sonnet|haiku|fable|inherit"' _ "$(frontmatter "$a" model)"
   check "shield-$role can't dispatch other agents" sh -c '! grep -Eq "^tools:.*(:|,) *Agent *(,|$)" "$1"' _ "$a"
   check "shield-$role points at .agents/$role.md, which exists" sh -c 'grep -q ".agents/$2.md" "$1" && test -f "$3/.agents/$2.md"' _ "$a" "$role" "$ROOT"
+  check "shield-$role has a row in models.md" test -n "$(model_cell "$role" 3)"
+  check "shield-$role Claude Code model matches models.md" test "$(frontmatter "$a" model)" = "$(model_cell "$role" 3)"
+  check "shield-$role Claude Code effort matches models.md" test "$(frontmatter "$a" effort)" = "$(model_cell "$role" 4 | sed 's/^-$//')"
+  check "shield-$role Codex name matches its file" test "$(toml_value "$x" name)" = "shield-$role"
+  check "shield-$role Codex description matches Claude Code's" test "$(toml_value "$x" description)" = "$(frontmatter "$a" description)"
+  check "shield-$role Codex model matches models.md" test "$(toml_value "$x" model)" = "$(model_cell "$role" 5)"
+  check "shield-$role Codex effort matches models.md" test "$(toml_value "$x" model_reasoning_effort)" = "$(model_cell "$role" 6 | sed 's/^-$//')"
+  check "shield-$role Codex instructions match Claude Code's" test "$(toml_body "$x")" = "$(body_of "$a")"
+  check "shield-$role Cursor name matches its file" test "$(frontmatter "$c" name)" = "shield-$role"
+  check "shield-$role Cursor description matches Claude Code's" test "$(frontmatter "$c" description)" = "$(frontmatter "$a" description)"
+  check "shield-$role Cursor model matches models.md" test "$(frontmatter "$c" model)" = "$(model_cell "$role" 7)"
+  check "shield-$role Cursor body matches Claude Code's" test "$(body_of "$c")" = "$(body_of "$a")"
 done
-for s in shield shield-plan shield-review shield-init; do
-  check "skill $s name matches its folder" grep -qx "name: $s" "$ROOT/.claude/skills/$s/SKILL.md"
+for role in architect designer reviewer product-owner product-manager; do
+  check "shield-$role is read-only in Cursor" test "$(frontmatter "$ROOT/.cursor/agents/shield-$role.md" readonly)" = true
 done
-check "read-only roles have no edit tools" sh -c '! grep -Eq "^tools:.*(:|,) *(Edit|Write|NotebookEdit) *(,|$)" "$1/.claude/agents/shield-architect.md" "$1/.claude/agents/shield-reviewer.md"' _ "$ROOT"
-check "no em dashes in shield's Markdown" sh -c '! grep -rl "—" "$1" --include="*.md" --include="*.block" --exclude-dir=.git' _ "$ROOT"
+for s in $SKILLS; do
+  check "skill $s name matches its folder" test "$(frontmatter "$ROOT/.claude/skills/$s/SKILL.md" name)" = "$s"
+  check "shared skill $s matches the Claude Code skill" sh -c 'grep -v "^argument-hint: " "$1" | cmp -s - "$2"' _ "$ROOT/.claude/skills/$s/SKILL.md" "$ROOT/.agents/skills/$s/SKILL.md"
+  check "skill $s names every tool's mechanics file" sh -c 'for m in .claude/skills/shield/mechanics.md .codex/shield-mechanics.md .cursor/rules/shield-mechanics.mdc; do grep -qF "$m" "$1" && test -f "$2/$m" || exit 1; done' _ "$ROOT/.claude/skills/$s/SKILL.md" "$ROOT"
+done
+check "every Claude Code agent uses an allowlist" sh -c 'for r in $2; do grep -q "^tools: " "$1/.claude/agents/shield-$r.md" && ! grep -q "^disallowedTools:" "$1/.claude/agents/shield-$r.md" || exit 1; done' _ "$ROOT" "$ROLES"
+check "read-only roles have no edit tools" sh -c 'for r in architect designer reviewer tester product-owner product-manager; do ! grep -Eq "^tools:.*(:|,) *(Edit|Write|NotebookEdit) *(,|$)" "$1/.claude/agents/shield-$r.md" || exit 1; done' _ "$ROOT"
+check "no em dashes in shield's files" sh -c '! grep -rl "—" "$1" --include="*.md" --include="*.mdc" --include="*.toml" --include="*.block" --exclude-dir=.git' _ "$ROOT"
 
 # ---------------------------------------------------------------------------
 printf '\n%s passed, %s failed (installer run with: %s)\n' "$PASSED" "$FAILED" "$SH"

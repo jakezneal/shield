@@ -8,8 +8,8 @@ Read `.agents/handoffs.md` first.
 
 ## 1. Investigate before asking
 
-1. Read `brief.md` in the run folder, including any `## Decisions` the user has already made.
-2. Read `.memory/`: `project.md`, `commands.md`, `decisions.md`, `pitfalls.md`, and `.skills/registry.md` and `.skills/local.md` for skill assignment.
+1. Read `brief.md` in the run folder, including any `## Decisions` already made, and `ticket.md` if there is one.
+2. Read `.memory/`: `project.md`, `product.md`, `commands.md`, `decisions.md`, `pitfalls.md`, and `.skills/registry.md`, `.skills/local.md` and `.skills/tools.md` for skill assignment.
 3. Read the code the request touches, its tests, and similar existing features. If the repository can answer a question, find the answer rather than asking.
 4. Restate the request as a concrete outcome: what changes, for whom, and how anyone will know it worked.
 
@@ -25,7 +25,13 @@ Ask only blocking questions. Put upstream decisions first, and don't ask about d
 - Weak: "Any preferences on the approach?"
 - Weak: asking which database table to use before knowing whether the data needs storing at all.
 
-Return questions with status `NEEDS_INPUT`, numbered `Q1`, `Q2` and so on. The answers will come back to you, or appear in `brief.md` under `## Decisions`.
+Return questions with status `NEEDS_INPUT`, numbered and tagged `[product]` or `[technical]` as `handoffs.md` describes. The answers will come back to you, or appear in `brief.md` under `## Decisions`.
+
+## Working from a ticket
+
+- Keep every acceptance criterion in `ticket.md`, with its wording, as the first ACs in the plan. Add technical ACs after them.
+- If a ticket AC is untestable, contradictory or missing, ask a `[product]` question. Don't quietly reinterpret it.
+- If the ticket is too large for one run, propose the split and plan the first part.
 
 ## 3. Choose an approach
 
@@ -58,6 +64,10 @@ Return status `PLAN_READY` with these sections:
 ```
 
 No placeholders such as "TBD" or "add tests". The Tester must be able to check every acceptance criterion. Mark Design as Required for any change to screens, flows, layout, visual styling, interaction or accessibility.
+
+## Ticket mode
+
+When dispatched to draft or refine a ticket (only when no Product Owner or Product Manager agent is set), investigate enough to keep it realistic and return status `TICKET_READY` with the ticket in the format of `.agents/templates/ticket.md`: a clear problem, behavioural acceptance criteria, out of scope and dependencies. Do not plan the implementation.
 
 ## Init mode
 

@@ -8,12 +8,12 @@ Read `.agents/handoffs.md` first.
 
 ## How to work
 
-1. Read `plan.md` (especially Design and the acceptance criteria) and `.memory/project.md`.
+1. Read `plan.md` (especially Design and the acceptance criteria), `ticket.md` if present, `.memory/project.md` and `.memory/product.md`.
 2. Study the existing UI: components, styles, design tokens, and screens similar to this one.
 3. Use the design tooling the plan assigns you if it is available, such as a Figma connection, design-system documentation or screenshots. If none is available, work from the codebase and platform conventions, and say so in Sources.
 4. Reuse the existing design system. Propose a new component or token only when nothing existing fits, and justify it.
 5. Stay within the plan's scope. Prefer practical decisions over a speculative redesign.
-6. If a product decision is beyond you, return `NEEDS_INPUT` with numbered questions, options and a recommendation.
+6. If a decision is beyond you, return `NEEDS_INPUT` with questions tagged as `handoffs.md` describes.
 
 ## Brief format
 

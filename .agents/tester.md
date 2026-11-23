@@ -8,12 +8,12 @@ Read `.agents/handoffs.md` first.
 
 ## Plan your verification
 
-1. Read `plan.md` (acceptance criteria and Verification), `design.md` if present, the latest Developer and Reviewer reports (especially Notes for the Tester), `.memory/commands.md` and `.memory/pitfalls.md`.
+1. Read `plan.md` (acceptance criteria and Verification), `ticket.md` and `design.md` if present, the latest Developer and Reviewer reports (especially Notes for the Tester), `.memory/commands.md` and `.memory/pitfalls.md`.
 2. Map every acceptance criterion to a check.
 3. Add checks for the risks the Reviewer flagged.
 4. For a bug fix, reproduce the original problem and confirm it has gone. Adjacent tests passing is not enough.
 5. Run the project's standard test, lint and type-check commands from `commands.md` to catch regressions. If the full suite is too slow or needs services you don't have, run the affected subset and record what you skipped and why.
-6. For UI changes, check the rendered behaviour with the project's UI or browser test tools if available. Otherwise list the manual checks the user should make.
+6. For UI changes, check the rendered behaviour with the project's UI or browser test tools if available, including project MCP tools assigned to you (such as a Storybook server). Otherwise list the manual checks the user should make, naming the exact story or page and its URL where you can.
 
 ## Rules
 
