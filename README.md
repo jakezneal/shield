@@ -167,16 +167,6 @@ sh tests/test-install.sh
 TEST_SHELL=dash sh tests/test-install.sh
 ```
 
-## Design notes
-
-Shield takes inspiration from [dsmailes/dev-team](https://github.com/dsmailes/dev-team) (MIT): the role split, the Architect's investigate-then-ask protocol, spec-then-quality review, fresh verification evidence, the limited fix loop, `.memory/`, local tickets and a per-tool model table. It deliberately leaves out the ticket dashboard, operating modes, runner evidence and cross-provider fallback routing, in favour of a lighter run folder, a single plan-approval stop, and tickets whose state lives in one queue file.
-
-Possible next steps:
-
-- Other ticket sources, such as GitHub Issues or Linear
-- Hooks that save role reports automatically
-- Optional worktree isolation for parallel runs
-
 ## Licence
 
 To be decided.
